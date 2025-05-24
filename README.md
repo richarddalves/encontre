@@ -1,4 +1,7 @@
 # Encontre
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![COPR](https://img.shields.io/badge/install%20via-COPR-blue)](https://copr.fedorainfracloud.org/coprs/richarddalves/encontre/)
+[![Versão](https://img.shields.io/badge/versão-1.0.0-blue)](https://github.com/richarddalves/encontre/releases)
 
 Wrapper amigável para o comando `find` do Linux, oferecendo sintaxe simplificada e recursos adicionais.
 
@@ -23,8 +26,8 @@ O Encontre é uma ferramenta de linha de comando que simplifica a busca de arqui
 Via COPR:
 
 ```bash
-sudo dnf copr enable richarddalves/encontre
-sudo dnf install encontre
+sudo dnf copr enable richarddalves/encontre -y
+sudo dnf install encontre -y
 ```
 
 ### Ubuntu / Debian
