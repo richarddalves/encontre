@@ -1,0 +1,23 @@
+# Arquivos de build
+*.deb
+*.rpm
+*.tar.gz
+*.tar.xz
+rpmbuild/
+debian/encontre/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.log
+debian/*.substvars
+build/
+dist/
+releases/
+
+# Backup
+*~
+*.bak
+
+# IDE
+.vscode/
+.idea/

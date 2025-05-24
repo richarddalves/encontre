@@ -1,0 +1,17 @@
+Source: encontre
+Section: utils
+Priority: optional
+Maintainer: Richard Dias Alves <seu-email@gmail.com>
+Build-Depends: debhelper (>= 10)
+Standards-Version: 4.5.0
+Homepage: https://github.com/richarddalves/encontre
+Vcs-Browser: https://github.com/richarddalves/encontre
+Vcs-Git: https://github.com/richarddalves/encontre.git
+
+Package: encontre
+Architecture: all
+Depends: ${misc:Depends}, bash (>= 4.0), findutils, coreutils, bc
+Description: Wrapper amigável para o comando find
+  O encontre é um wrapper intuitivo para o comando find do Linux,
+  oferecendo uma sintaxe mais simples e recursos adicionais como
+  cores, contadores e filtros avançados.

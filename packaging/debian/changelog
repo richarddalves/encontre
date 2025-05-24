@@ -1,0 +1,10 @@
+encontre (1.0.0-1) stable; urgency=low
+
+  * Lançamento inicial
+  * Suporte completo para busca com sintaxe simplificada
+  * Cores na saída seguindo padrão ls
+  * Indicadores de tipo de arquivo
+  * Filtros por tamanho, data e tipo
+  * Alias 'encontrar' incluído
+
+ -- Richard Dias Alves <dev@richardalves.com>  Sat, 24 May 2025 02:15:00 -0300

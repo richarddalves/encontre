@@ -1,0 +1,1018 @@
+#!/bin/bash
+
+# Script "encontre" - Wrapper amigável para o comando find
+# Versão: 1.0.0
+# Autor: Richard Dias Alves - https://github.com/richarddalves
+# Uso: encontre [diretório] [opções...]
+
+# Informações do script
+VERSAO="1.0.0"
+AUTOR="Richard Dias Alves"
+GITHUB="https://github.com/richarddalves"
+
+# Cores para output (mesmas do ls)
+RED='\033[0;31m'      # Arquivos com problemas
+GREEN='\033[0;32m'    # Arquivos executáveis
+BLUE='\033[0;34m'     # Diretórios
+CYAN='\033[0;36m'     # Links simbólicos
+YELLOW='\033[0;33m'   # Dispositivos especiais, pipes, etc
+NC='\033[0m'          # No Color
+
+# Variáveis globais
+USE_COLOR=true
+SAVE_FILE=""
+SHOW_COUNT=false
+SHOW_INDICATORS=""
+FILTER_TYPE=""
+FILTER_SIZE=""
+FILTER_SIZE_OP=""
+FILTER_MODIFIED=""
+FILTER_CREATED=""
+
+# Função para exibir versão
+mostrar_versao() {
+    echo "encontre $VERSAO"
+    echo "by $AUTOR - $GITHUB"
+}
+
+# Função para mostrar ajuda contextual
+mostrar_ajuda_contextual() {
+    local topico="$1"
+    
+    case "$topico" in
+        tipo|--tipo|-t)
+            cat << EOF
+AJUDA DETALHADA: --tipo / -t
+
+A opção --tipo (ou -t) filtra resultados por tipo de arquivo.
+
+SINTAXE:
+  encontre [diretório] --tipo [tipo]
+  encontre [diretório] -t [tipo]
+
+TIPOS DISPONÍVEIS:
+  arquivo, a    Tudo que não é diretório (arquivos regulares, links, pipes, etc)
+  diretorio, d  Apenas diretórios
+
+EXEMPLOS:
+  encontre . --tipo arquivo      # Lista todos os arquivos
+  encontre . -t a                # Mesmo resultado (forma curta)
+  encontre . --tipo diretorio    # Lista apenas diretórios
+  encontre . -t d                # Mesmo resultado (forma curta)
+
+IMPORTANTE SOBRE -t:
+  A opção -t pode significar --tipo OU --tamanho dependendo do contexto:
+  • -t arquivo    → é --tipo
+  • -t +10mb      → é --tamanho (começa com +, - ou =)
+  
+EXEMPLOS DA AMBIGUIDADE:
+  encontre . -t a           # Tipo: arquivos
+  encontre . -t +100kb      # Tamanho: maior que 100KB
+  encontre . -t diretorio   # Tipo: diretórios
+  encontre . -t =1mb        # Tamanho: exatamente 1MB
+
+COMBINANDO COM OUTRAS OPÇÕES:
+  encontre . --tipo arquivo --apenas *.txt     # Apenas arquivos .txt
+  encontre . -t d --ignore node_modules        # Diretórios, exceto node_modules
+  encontre . --tipo a --tamanho +1mb           # Arquivos maiores que 1MB
+EOF
+            ;;
+            
+        ignore|--ignore|-i)
+            cat << EOF
+AJUDA DETALHADA: --ignore / -i
+
+A opção --ignore (ou -i) exclui arquivos/diretórios dos resultados.
+
+SINTAXE:
+  encontre [diretório] --ignore [padrões...]
+  encontre [diretório] -i [padrões...]
+
+EXEMPLOS BÁSICOS:
+  encontre . --ignore .git              # Ignora pasta .git
+  encontre . -i node_modules            # Ignora node_modules
+  encontre . --ignore *.log             # Ignora arquivos .log
+  encontre . -i test* backup*           # Ignora múltiplos padrões
+
+PADRÕES ESPECIAIS:
+  pasta/     Ignora apenas o diretório (com / no final)
+  arquivo    Ignora tanto arquivo quanto diretório com esse nome
+  *.ext      Ignora usando wildcards (* = qualquer coisa)
+  
+EXEMPLOS AVANÇADOS:
+  encontre . --ignore .git/ node_modules/    # Ignora múltiplos diretórios
+  encontre . -i '*.tmp' '*.log' '*.bak'      # Ignora múltiplas extensões
+  encontre . --ignore build --apenas *.js    # Combina ignore com apenas
+
+IMPORTANTE SOBRE -i:
+  • -i seguido de argumentos = --ignore
+  • -i sozinho = --indicadores
+  
+EXEMPLOS DA AMBIGUIDADE:
+  encontre . -i                    # Mostra com indicadores (/, *, @, |)
+  encontre . -i .git               # Ignora .git
+  encontre . -i node_modules *.log # Ignora node_modules e *.log
+EOF
+            ;;
+            
+        apenas|--apenas|-a)
+            cat << EOF
+AJUDA DETALHADA: --apenas / -a
+
+A opção --apenas (ou -a) filtra para mostrar apenas padrões específicos.
+
+SINTAXE:
+  encontre [diretório] --apenas [padrões...]
+  encontre [diretório] -a [padrões...]
+
+EXEMPLOS BÁSICOS:
+  encontre . --apenas *.py              # Apenas arquivos Python
+  encontre . -a *.js *.jsx              # Apenas JavaScript e JSX
+  encontre . --apenas README*           # Apenas arquivos README
+  encontre . -a test_*                  # Apenas arquivos de teste
+
+WILDCARDS SUPORTADOS:
+  *     Qualquer sequência de caracteres
+  ?     Exatamente um caractere
+  
+EXEMPLOS COM WILDCARDS:
+  encontre . --apenas *.{js,ts}         # JavaScript e TypeScript
+  encontre . -a img_???.png             # img_001.png, img_abc.png, etc
+  encontre . --apenas *config*          # Qualquer arquivo com "config" no nome
+
+COMBINANDO COM OUTRAS OPÇÕES:
+  encontre . --apenas *.py --tipo arquivo         # Apenas .py (sem diretórios)
+  encontre . -a *.md --ignore drafts/             # Markdown exceto em drafts/
+  encontre . --apenas *.jpg --tamanho +1mb        # JPEGs maiores que 1MB
+
+IMPORTANTE SOBRE -a:
+  • -a sozinho = mostra ajuda (--ajuda)
+  • -a seguido de padrões = --apenas
+  
+EXEMPLOS DA AMBIGUIDADE:
+  encontre -a                      # Mostra ajuda geral
+  encontre . -a                    # Mostra ajuda geral
+  encontre . -a *.txt              # Apenas arquivos .txt
+  encontre . -a *.py *.pyx         # Apenas Python e Cython
+EOF
+            ;;
+            
+        tamanho|--tamanho)
+            cat << EOF
+AJUDA DETALHADA: --tamanho / -t
+
+A opção --tamanho filtra arquivos por tamanho.
+
+SINTAXE:
+  encontre [diretório] --tamanho [operador][tamanho][unidade]
+  encontre [diretório] -t [operador][tamanho][unidade]
+
+OPERADORES:
+  +    Maior que
+  -    Menor que
+  =    Exatamente igual
+
+UNIDADES SUPORTADAS:
+  Base 1000: b, kb, mb, gb, tb
+  Base 1024: kib, mib, gib, tib
+
+EXEMPLOS BÁSICOS:
+  encontre . --tamanho +10mb       # Maiores que 10MB
+  encontre . --tamanho -500kb      # Menores que 500KB
+  encontre . --tamanho =1gb        # Exatamente 1GB
+  encontre . -t +100mib            # Maiores que 100MiB (base 1024)
+
+EXEMPLOS PRÁTICOS:
+  # Encontrar arquivos grandes
+  encontre . --tamanho +100mb --tipo arquivo
+  
+  # Arquivos pequenos de configuração
+  encontre . --apenas *.conf --tamanho -10kb
+  
+  # Imagens pesadas
+  encontre . --apenas *.jpg *.png --tamanho +5mb
+  
+  # Logs muito grandes
+  encontre /var/log --apenas *.log --tamanho +1gb
+
+OBSERVAÇÕES:
+  • Sem unidade, assume bytes: --tamanho +1000
+  • Case insensitive: MB = mb = Mb
+  • Para -t funcionar como tamanho, DEVE começar com +, - ou =
+EOF
+            ;;
+            
+        modificado|--modificado|-m|criado|--criado)
+            cat << EOF
+AJUDA DETALHADA: --modificado / -m / --criado / -c
+
+Filtram arquivos por data de modificação ou criação.
+
+SINTAXE:
+  encontre [diretório] --modificado [tempo]
+  encontre [diretório] -m [tempo]
+  encontre [diretório] --criado [tempo]
+  encontre [diretório] -c [tempo]   # Cuidado: -c sozinho é --contar!
+
+FORMATOS DE TEMPO:
+  Nmin, N    N minutos (30min ou apenas 30)
+  Nh         N horas (2h, 24h)
+  Nd         N dias (7d, 30d)
+  Nm         N meses (1m, 6m)
+
+EXEMPLOS:
+  encontre . --modificado 30min    # Últimos 30 minutos
+  encontre . -m 24h                # Últimas 24 horas
+  encontre . --modificado 7d       # Últimos 7 dias
+  encontre . --criado 1m           # Último mês
+
+CASOS DE USO:
+  # Arquivos recém baixados
+  encontre ~/Downloads --modificado 1h
+  
+  # Logs do dia
+  encontre /var/log --apenas *.log --modificado 24h
+  
+  # Código modificado na semana
+  encontre . --apenas *.py *.js --modificado 7d
+  
+  # Backups antigos (combinar com rm cuidadosamente!)
+  encontre ~/backups --tipo arquivo --modificado 30d
+
+IMPORTANTE SOBRE -c:
+  • -c sozinho = contar arquivos
+  • -c [tempo] = filtrar por criação
+  
+EXEMPLOS DA AMBIGUIDADE:
+  encontre . -c              # Conta arquivos e diretórios
+  encontre . -c 7d           # Criados nos últimos 7 dias
+EOF
+            ;;
+            
+        contar|--contar|-c)
+            cat << EOF
+AJUDA DETALHADA: --contar / -c
+
+Mostra estatísticas dos resultados ao invés de listá-los.
+
+SINTAXE:
+  encontre [diretório] --contar
+  encontre [diretório] -c          # Apenas quando sozinho!
+
+SAÍDA:
+  Mostra três contadores:
+  • Arquivos: Total de arquivos (tudo que não é diretório)
+  • Diretórios: Total de diretórios
+  • Total: Soma de arquivos + diretórios
+
+EXEMPLOS:
+  encontre . --contar                      # Conta tudo
+  encontre . -c                            # Mesmo resultado
+  encontre . --ignore .git --contar       # Conta excluindo .git
+  encontre . --apenas *.py -c             # Conta apenas Python
+
+CASOS DE USO:
+  # Quantos arquivos Python no projeto?
+  encontre . --apenas *.py --contar
+  
+  # Quantos diretórios existem?
+  encontre . --tipo diretorio --contar
+  
+  # Arquivos grandes demais?
+  encontre . --tamanho +10mb --contar
+  
+  # Comparar antes/depois de limpeza
+  encontre . --ignore .git -c
+  # (fazer limpeza)
+  encontre . --ignore .git -c
+
+COMBINANDO COM OUTRAS OPÇÕES:
+  encontre . --tipo arquivo --modificado 7d --contar
+  encontre src/ --apenas *.test.js --contar
+  encontre . --tamanho +1gb --tipo arquivo -c
+EOF
+            ;;
+            
+        salvar|--salvar|-s)
+            cat << EOF
+AJUDA DETALHADA: --salvar / -s
+
+Salva os resultados em arquivo ao invés de mostrar no terminal.
+
+SINTAXE:
+  encontre [diretório] --salvar [arquivo]
+  encontre [diretório] -s [arquivo]
+
+EXEMPLOS BÁSICOS:
+  encontre . --salvar lista.txt           # Salva tudo em lista.txt
+  encontre . -s arquivos.log              # Salva em arquivos.log
+  encontre . --apenas *.py -s python.txt  # Lista de arquivos Python
+
+COMPORTAMENTO:
+  • Sobrescreve o arquivo se já existir
+  • Cria o arquivo se não existir
+  • Mostra mensagem de confirmação
+  • Não mostra os resultados no terminal
+
+CASOS DE USO:
+  # Backup da estrutura do projeto
+  encontre . --ignore .git node_modules -s estrutura.txt
+  
+  # Lista para processar depois
+  encontre . --apenas *.jpg --tamanho +5mb -s imagens_grandes.txt
+  
+  # Documentar arquivos modificados
+  encontre . --modificado 7d -s modificados_semana.txt
+  
+  # Criar lista para rsync/tar
+  encontre . --tipo arquivo --salvar para_backup.txt
+
+PROCESSANDO O ARQUIVO DEPOIS:
+  # Contar linhas (total de arquivos)
+  wc -l lista.txt
+  
+  # Ver apenas diretórios da lista
+  grep '/$' lista.txt
+  
+  # Usar com outros comandos
+  xargs rm < arquivos_temp.txt    # CUIDADO!
+  tar -czf backup.tar.gz -T lista.txt
+EOF
+            ;;
+            
+        indicadores|--indicadores|-i|indicador-simples|--indicador-simples|--is)
+            cat << EOF
+AJUDA DETALHADA: Indicadores de Tipo
+
+Adiciona caracteres especiais ao final dos nomes para indicar o tipo.
+
+OPÇÕES:
+  --indicadores, -i         Mostra todos os indicadores
+  --indicador-simples, --is Mostra apenas / para diretórios
+
+INDICADORES:
+  /    Diretório
+  *    Arquivo executável
+  @    Link simbólico
+  |    Named pipe (FIFO)
+
+EXEMPLOS:
+  encontre . --indicadores           # Todos os indicadores
+  encontre . -i                      # Mesmo resultado (quando sozinho)
+  encontre . --indicador-simples     # Apenas / nos diretórios
+  encontre . --is                    # Mesmo resultado
+
+SAÍDA EXEMPLO COM --indicadores:
+  src/                    # Diretório
+  script.sh*              # Executável
+  link-para-arquivo@      # Link simbólico
+  pipe-exemplo|           # Named pipe
+  documento.txt           # Arquivo regular (sem indicador)
+
+SAÍDA EXEMPLO COM --indicador-simples:
+  src/                    # Diretório
+  script.sh               # Executável (sem *)
+  documento.txt           # Arquivo regular
+
+COMBINANDO COM OUTRAS OPÇÕES:
+  encontre . --tipo diretorio -i      # Diretórios com /
+  encontre . --apenas *.sh --indicadores   # Scripts com *
+  encontre . --is --sem-cor           # Simples sem cores
+
+IMPORTANTE SOBRE -i:
+  • -i sozinho = --indicadores
+  • -i [arquivos] = --ignore
+  
+USO PRÁTICO:
+  # Visualizar estrutura
+  encontre . --tipo d --is
+  
+  # Identificar executáveis
+  encontre /usr/local/bin --indicadores
+  
+  # Verificar links quebrados
+  encontre . --indicadores | grep '@$'
+EOF
+            ;;
+            
+        cor|color|--no-color|--sem-cor|--nc|--sc)
+            cat << EOF
+AJUDA DETALHADA: Opções de Cor
+
+Controla se a saída terá cores ou não.
+
+OPÇÕES PARA DESABILITAR CORES:
+  --no-color     Desabilita cores (inglês)
+  --nc           Atalho para --no-color
+  --sem-cor      Desabilita cores (português)
+  --sc           Atalho para --sem-cor
+
+CORES PADRÃO (quando habilitadas):
+  Azul:     Diretórios
+  Verde:    Arquivos executáveis
+  Ciano:    Links simbólicos
+  Amarelo:  Dispositivos especiais, pipes
+  Branco:   Arquivos regulares
+
+EXEMPLOS:
+  encontre . --no-color              # Sem cores
+  encontre . --nc                    # Mesmo resultado
+  encontre . --sem-cor               # Sem cores (pt-BR)
+  encontre . --sc                    # Mesmo resultado
+
+QUANDO USAR SEM CORES:
+  # Salvar em arquivo (cores são códigos ANSI)
+  encontre . --sem-cor > lista.txt
+  
+  # Processar com outros comandos
+  encontre . --nc | grep pattern
+  
+  # Scripts que processam a saída
+  encontre . --sc | while read file; do
+    echo "Processando: $file"
+  done
+  
+  # Terminais que não suportam cores
+  encontre . --no-color
+
+COMBINANDO:
+  encontre . --indicadores --sem-cor    # Indicadores sem cores
+  encontre . --tipo d --nc               # Diretórios sem cor azul
+  encontre . --salvar lista.txt          # Automaticamente sem cores
+
+NOTA: Ao usar --salvar, as cores são automaticamente
+desabilitadas no arquivo salvo.
+EOF
+            ;;
+            
+        *)
+            # Ajuda geral se o tópico não for reconhecido
+            mostrar_ajuda
+            ;;
+    esac
+}
+
+# Função para exibir ajuda geral
+mostrar_ajuda() {
+    cat << EOF
+Uso: encontre [diretório] [opções...]
+
+EXEMPLOS BÁSICOS:
+  encontre .                            # Lista tudo no diretório atual
+  encontre . --ignore .git/             # Ignora a pasta .git
+  encontre src --ignore node_modules    # Busca em src/ ignorando node_modules
+  encontre . --ignore *.log             # Ignora arquivos .log
+  encontre . --apenas *.py              # Mostra apenas arquivos .py
+
+EXEMPLOS AVANÇADOS:
+  encontre . --ignore .git node_modules --apenas *.py
+  encontre . --tipo arquivo --tamanho +10mb
+  encontre . --modificado 7d --salvar resultados.txt
+  encontre . --contar --sem-cor
+
+OPÇÕES DE BUSCA:
+  --ignore PADRÕES...           Ignora arquivos/diretórios que correspondem aos padrões
+  -i PADRÕES...                 Atalho para --ignore
+
+  --apenas PADRÕES...           Busca apenas os padrões especificados
+  -a PADRÕES...                 Atalho para --apenas
+                                ATENÇÃO: -a sozinho mostra esta ajuda!
+
+OPÇÕES DE FILTRO:
+  --tipo TIPO                   Filtra por tipo:
+  -t TIPO                       • arquivo ou a: tudo que não é diretório
+                                • diretorio ou d: apenas diretórios
+  
+  --tamanho OPERADOR+TAMANHO    Filtra por tamanho
+  -t OPERADOR+TAMANHO           • +10mb: maior que 10MB
+                                • -1gb: menor que 1GB
+                                • =5kb: exatamente 5KB
+                                ATENÇÃO: -t pode ser --tipo ou --tamanho!
+                                Se começar com +, - ou =, é tamanho.
+  
+  --modificado TEMPO            Arquivos modificados no período
+  -m TEMPO                      • 30min: últimos 30 minutos
+                                • 2h: últimas 2 horas
+                                • 7d: últimos 7 dias
+                                • 1m: último mês
+  
+  --criado TEMPO                Arquivos criados no período
+  -c TEMPO                      Mesmo formato de --modificado
+                                ATENÇÃO: -c sozinho é --contar!
+
+OPÇÕES DE SAÍDA:
+  --salvar ARQUIVO              Salva resultados em arquivo
+  -s ARQUIVO                    
+
+  --contar                      Mostra contagem de arquivos e diretórios
+  -c                            ATENÇÃO: -c sozinho é contar,
+                                -c TEMPO é --criado!
+
+  --indicadores                 Adiciona indicadores aos nomes:
+  -i                            • / para diretórios
+                                • * para executáveis
+                                • @ para links simbólicos
+                                • | para pipes
+                                ATENÇÃO: -i sozinho é indicadores,
+                                -i PADRÕES é --ignore!
+
+  --indicador-simples, --is     Adiciona apenas / para diretórios
+
+  --no-color, --nc              Desabilita cores na saída
+  --sem-cor, --sc               Mesmo que --no-color
+
+OPÇÕES GERAIS:
+  -h, --help                    Mostra esta ajuda
+  -a, --ajuda                   Mesmo que --help
+                                ATENÇÃO: -a sozinho mostra ajuda,
+                                -a PADRÕES... é --apenas!
+
+  -v, --version, --versao       Mostra informações da versão
+
+AJUDA DETALHADA:
+  Para ajuda específica sobre uma opção, use:
+  encontre --OPÇÃO --ajuda
+  
+  Exemplos:
+  encontre --tipo --ajuda       # Ajuda sobre tipos
+  encontre --ignore --ajuda     # Ajuda sobre ignore
+  encontre -t --ajuda          # Ajuda sobre -t
+
+CORES NA SAÍDA (quando habilitadas):
+  • Azul: Diretórios
+  • Verde: Arquivos executáveis
+  • Ciano: Links simbólicos
+  • Amarelo: Dispositivos especiais, pipes, etc
+  • Branco: Arquivos regulares
+
+Versão: $VERSAO
+Autor: $AUTOR - $GITHUB
+EOF
+}
+
+# Função para converter tamanho para bytes
+tamanho_para_bytes() {
+    local size="$1"
+    local num="${size//[^0-9.]/}"
+    local unit="${size//[0-9.]/}"
+    unit=$(echo "$unit" | tr '[:upper:]' '[:lower:]')
+    
+    # Verificar se bc está disponível
+    if command -v bc >/dev/null 2>&1; then
+        case "$unit" in
+            b|"") echo "$num" ;;
+            kb) echo "scale=0; $num * 1000 / 1" | bc ;;
+            mb) echo "scale=0; $num * 1000000 / 1" | bc ;;
+            gb) echo "scale=0; $num * 1000000000 / 1" | bc ;;
+            tb) echo "scale=0; $num * 1000000000000 / 1" | bc ;;
+            kib) echo "scale=0; $num * 1024 / 1" | bc ;;
+            mib) echo "scale=0; $num * 1048576 / 1" | bc ;;
+            gib) echo "scale=0; $num * 1073741824 / 1" | bc ;;
+            tib) echo "scale=0; $num * 1099511627776 / 1" | bc ;;
+            *) echo "0" ;;
+        esac
+    else
+        # Fallback sem bc (funciona apenas para valores pequenos)
+        num=${num%.*}  # Remove decimais
+        case "$unit" in
+            b|"") echo "$num" ;;
+            kb|kib) echo "${num}K" ;;
+            mb|mib) echo "${num}M" ;;
+            gb|gib) echo "${num}G" ;;
+            *) echo "0" ;;
+        esac
+    fi
+}
+
+# Função para converter tempo para minutos
+tempo_para_minutos() {
+    local time="$1"
+    local num="${time//[^0-9]/}"
+    local unit="${time//[0-9]/}"
+    unit=$(echo "$unit" | tr '[:upper:]' '[:lower:]')
+    
+    case "$unit" in
+        min|"") echo "$num" ;;
+        h) echo "$((num * 60))" ;;
+        d) echo "$((num * 60 * 24))" ;;
+        m) echo "$((num * 60 * 24 * 30))" ;;
+        *) echo "0" ;;
+    esac
+}
+
+# Função para verificar se arquivo é executável binário
+is_binary_executable() {
+    local file="$1"
+    # Verifica se é executável E se é binário (não texto)
+    if [ -x "$file" ] && [ -f "$file" ]; then
+        # Usar file command se disponível
+        if command -v file >/dev/null 2>&1; then
+            # Verificar se é executável binário real
+            local file_type=$(file -b "$file" 2>/dev/null)
+            if echo "$file_type" | grep -qE '(executable|ELF|binary|Mach-O)' && \
+               ! echo "$file_type" | grep -qE '(text|script|ASCII|UTF)'; then
+                return 0
+            fi
+            # Verificar extensões de script conhecidas que devem ser verdes
+            case "$file" in
+                *.sh|*.bash|*.zsh|*.fish|*.ksh) return 0 ;;
+                *.py|*.pl|*.rb) 
+                    # Apenas se tiver shebang
+                    head -n1 "$file" 2>/dev/null | grep -q "^#!" && return 0
+                    ;;
+            esac
+        else
+            # Fallback: verificar magic numbers comuns
+            local magic=$(head -c 4 "$file" 2>/dev/null | od -An -tx1 | tr -d ' ')
+            case "$magic" in
+                7f454c46*) return 0 ;; # ELF
+                cafebabe*) return 0 ;; # Mach-O
+                4d5a*) return 0 ;;     # PE/DOS
+                23212f*) return 0 ;;   # Shebang (#!)
+            esac
+        fi
+    fi
+    return 1
+}
+
+# Função para processar output e adicionar cores/indicadores
+processar_output() {
+    while IFS= read -r linha; do
+        if [ -z "$linha" ]; then
+            continue
+        fi
+        
+        # Determinar tipo e cor
+        local cor=""
+        local indicador=""
+        
+        if [ -d "$linha" ]; then
+            cor="$BLUE"
+            indicador="/"
+        elif [ -L "$linha" ]; then
+            cor="$CYAN"
+            indicador="@"
+        elif [ -p "$linha" ]; then
+            cor="$YELLOW"
+            indicador="|"
+        elif is_binary_executable "$linha"; then
+            cor="$GREEN"
+            indicador="*"
+        else
+            cor=""
+            indicador=""
+        fi
+        
+        # Aplicar formatação
+        if [ "$USE_COLOR" = true ] && [ -n "$cor" ]; then
+            printf "${cor}%s${NC}" "$linha"
+        else
+            printf "%s" "$linha"
+        fi
+        
+        # Adicionar indicador se solicitado
+        if [ "$SHOW_INDICATORS" = "full" ] && [ -n "$indicador" ]; then
+            printf "%s" "$indicador"
+        elif [ "$SHOW_INDICATORS" = "simple" ] && [ "$indicador" = "/" ]; then
+            printf "/"
+        fi
+        
+        printf "\n"
+    done
+}
+
+# Verificar se há argumentos
+if [ $# -eq 0 ]; then
+    mostrar_ajuda
+    exit 0
+fi
+
+# Verificar se é pedido de ajuda contextual
+if [ $# -eq 2 ] && { [ "$2" = "--ajuda" ] || [ "$2" = "-a" ] || [ "$2" = "--help" ] || [ "$2" = "-h" ]; }; then
+    mostrar_ajuda_contextual "$1"
+    exit 0
+fi
+
+# Verificar primeiro argumento para flags especiais
+case "$1" in
+    -h|--help|--ajuda)
+        mostrar_ajuda
+        exit 0
+        ;;
+    -v|--version|--versao)
+        mostrar_versao
+        exit 0
+        ;;
+    -a)
+        # Se -a está sozinho, é ajuda
+        if [ $# -eq 1 ]; then
+            mostrar_ajuda
+            exit 0
+        fi
+        # Se o próximo é -a também, é ajuda contextual sobre -a
+        if [ "$2" = "-a" ] || [ "$2" = "--ajuda" ]; then
+            mostrar_ajuda_contextual "apenas"
+            exit 0
+        fi
+        ;;
+    -c)
+        # Se -c está sozinho ou seguido de flag/diretório, é contar
+        if [ $# -eq 1 ]; then
+            SHOW_COUNT=true
+            DIRETORIO="."
+            shift
+        elif [ $# -eq 2 ] && [ -d "$2" ]; then
+            # Se o próximo é um diretório, -c é contar
+            SHOW_COUNT=true
+        elif [ $# -gt 2 ] && [[ "$2" =~ ^- ]]; then
+            # Se o próximo é uma flag, -c é contar
+            SHOW_COUNT=true
+        fi
+        ;;
+    -i)
+        # Se -i está sozinho, é indicadores
+        if [ $# -eq 1 ]; then
+            SHOW_INDICATORS="full"
+            DIRETORIO="."
+            shift
+        elif [ $# -eq 2 ] && [ -d "$2" ]; then
+            # Se o próximo é um diretório, -i é indicadores
+            SHOW_INDICATORS="full"
+        fi
+        ;;
+esac
+
+# Se ainda não definimos o diretório, o primeiro argumento é o diretório
+if [ -z "$DIRETORIO" ]; then
+    DIRETORIO="$1"
+    shift
+fi
+
+# Verificar se o diretório existe
+if [ ! -d "$DIRETORIO" ]; then
+    echo "Erro: Diretório '$DIRETORIO' não encontrado."
+    exit 1
+fi
+
+# Arrays para armazenar padrões
+declare -a IGNORE_PATTERNS=()
+declare -a APENAS_PATTERNS=()
+
+# Processar argumentos
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --ignore)
+            shift
+            while [ $# -gt 0 ] && [[ ! "$1" =~ ^- ]]; do
+                IGNORE_PATTERNS+=("$1")
+                shift
+            done
+            ;;
+        -i)
+            # Verificar se -i é ignore ou indicadores
+            if [ $# -eq 1 ] || { [ $# -gt 1 ] && [[ "$2" =~ ^- ]]; }; then
+                # -i sozinho ou seguido de flag = indicadores
+                SHOW_INDICATORS="full"
+                shift
+            else
+                # -i seguido de argumentos = ignore
+                shift
+                while [ $# -gt 0 ] && [[ ! "$1" =~ ^- ]]; do
+                    IGNORE_PATTERNS+=("$1")
+                    shift
+                done
+            fi
+            ;;
+        --apenas|-a)
+            shift
+            while [ $# -gt 0 ] && [[ ! "$1" =~ ^- ]]; do
+                APENAS_PATTERNS+=("$1")
+                shift
+            done
+            ;;
+        --tipo)
+            shift
+            FILTER_TYPE="$1"
+            shift
+            ;;
+        -t)
+            shift
+            # Verificar se é tamanho ou tipo
+            if [[ "$1" =~ ^[\+\-=][0-9] ]]; then
+                # É tamanho
+                FILTER_SIZE_OP="${1:0:1}"
+                FILTER_SIZE="${1:1}"
+            else
+                # É tipo
+                FILTER_TYPE="$1"
+            fi
+            shift
+            ;;
+        --tamanho)
+            shift
+            if [[ "$1" =~ ^[+\-=] ]]; then
+                FILTER_SIZE_OP="${1:0:1}"
+                FILTER_SIZE="${1:1}"
+            else
+                echo "Erro: --tamanho deve ser seguido de +, - ou = e o tamanho"
+                exit 1
+            fi
+            shift
+            ;;
+        --modificado|-m)
+            shift
+            FILTER_MODIFIED="$1"
+            shift
+            ;;
+        --criado)
+            shift
+            FILTER_CREATED="$1"
+            shift
+            ;;
+        -c)
+            shift
+            # Se tem mais argumentos após -c, é criado
+            if [ $# -gt 0 ] && [[ ! "$1" =~ ^- ]]; then
+                FILTER_CREATED="$1"
+                shift
+            else
+                # É contar
+                SHOW_COUNT=true
+            fi
+            ;;
+        --contar)
+            SHOW_COUNT=true
+            shift
+            ;;
+        --salvar|-s)
+            shift
+            SAVE_FILE="$1"
+            shift
+            ;;
+        --no-color|--nc|--sem-cor|--sc)
+            USE_COLOR=false
+            shift
+            ;;
+        --indicadores)
+            SHOW_INDICATORS="full"
+            shift
+            ;;
+        --indicador-simples|--is)
+            SHOW_INDICATORS="simple"
+            shift
+            ;;
+        -h|--help|-a|--ajuda)
+            mostrar_ajuda
+            exit 0
+            ;;
+        -v|--version|--versao)
+            mostrar_versao
+            exit 0
+            ;;
+        *)
+            echo "Erro: Opção desconhecida '$1'"
+            echo "Use 'encontre --help' para ver a ajuda."
+            exit 1
+            ;;
+    esac
+done
+
+# Construir comando find
+FIND_CMD="find '$DIRETORIO'"
+
+# Adicionar filtro de tipo
+if [ -n "$FILTER_TYPE" ]; then
+    case "$FILTER_TYPE" in
+        arquivo|a) FIND_CMD="$FIND_CMD ! -type d" ;;
+        diretorio|d) FIND_CMD="$FIND_CMD -type d" ;;
+        *) 
+            echo "Erro: Tipo '$FILTER_TYPE' não reconhecido. Use: arquivo/a, diretorio/d"
+            exit 1
+            ;;
+    esac
+fi
+
+# Adicionar exclusões
+if [ ${#IGNORE_PATTERNS[@]} -gt 0 ]; then
+    FIND_CMD="$FIND_CMD \\("
+    FIRST=true
+    
+    for pattern in "${IGNORE_PATTERNS[@]}"; do
+        if [ "$FIRST" = true ]; then
+            FIRST=false
+        else
+            FIND_CMD="$FIND_CMD -o"
+        fi
+        
+        # Verificar se é um diretório (termina com /)
+        if [[ "$pattern" == */ ]]; then
+            pattern="${pattern%/}"
+            FIND_CMD="$FIND_CMD -path '*/$pattern' -prune"
+        elif [[ "$pattern" == *"*"* ]]; then
+            FIND_CMD="$FIND_CMD -name '$pattern'"
+        else
+            FIND_CMD="$FIND_CMD \\( -name '$pattern' -o -path '*/$pattern' -prune \\)"
+        fi
+    done
+    
+    FIND_CMD="$FIND_CMD \\) -prune -o"
+fi
+
+# Adicionar filtro de tamanho
+if [ -n "$FILTER_SIZE" ]; then
+    bytes=$(tamanho_para_bytes "$FILTER_SIZE")
+    if [ "$bytes" != "0" ]; then
+        # Se retornou um número, usar com 'c' para bytes
+        if [[ "$bytes" =~ ^[0-9]+$ ]]; then
+            case "$FILTER_SIZE_OP" in
+                "+") FIND_CMD="$FIND_CMD -size +${bytes}c" ;;
+                "-") FIND_CMD="$FIND_CMD -size -${bytes}c" ;;
+                "=") FIND_CMD="$FIND_CMD -size ${bytes}c" ;;
+            esac
+        else
+            # Se retornou com sufixo (K, M, G), usar diretamente
+            case "$FILTER_SIZE_OP" in
+                "+") FIND_CMD="$FIND_CMD -size +${bytes}" ;;
+                "-") FIND_CMD="$FIND_CMD -size -${bytes}" ;;
+                "=") FIND_CMD="$FIND_CMD -size ${bytes}" ;;
+            esac
+        fi
+    fi
+fi
+
+# Adicionar filtro de modificação
+if [ -n "$FILTER_MODIFIED" ]; then
+    mins=$(tempo_para_minutos "$FILTER_MODIFIED")
+    if [ "$mins" -gt 0 ]; then
+        FIND_CMD="$FIND_CMD -mmin -$mins"
+    fi
+fi
+
+# Adicionar filtro de criação
+if [ -n "$FILTER_CREATED" ]; then
+    mins=$(tempo_para_minutos "$FILTER_CREATED")
+    if [ "$mins" -gt 0 ]; then
+        # Nota: find não tem -cmin em todos os sistemas, usando -mmin como fallback
+        FIND_CMD="$FIND_CMD -mmin -$mins"
+    fi
+fi
+
+# Adicionar filtros de inclusão
+if [ ${#APENAS_PATTERNS[@]} -gt 0 ]; then
+    FIND_CMD="$FIND_CMD \\("
+    FIRST=true
+    
+    for pattern in "${APENAS_PATTERNS[@]}"; do
+        if [ "$FIRST" = true ]; then
+            FIRST=false
+        else
+            FIND_CMD="$FIND_CMD -o"
+        fi
+        
+        FIND_CMD="$FIND_CMD -name '$pattern'"
+    done
+    
+    FIND_CMD="$FIND_CMD \\)"
+fi
+
+# Adicionar -print ao final
+FIND_CMD="$FIND_CMD -print"
+
+# Executar comando e processar saída
+if [ "$SHOW_COUNT" = true ]; then
+    # Modo contador
+    RESULTS=$(eval "$FIND_CMD" 2>/dev/null | while read -r line; do
+        [ "$line" != "$DIRETORIO" ] && echo "$line"
+    done)
+    
+    TOTAL=0
+    DIR_COUNT=0
+    FILE_COUNT=0
+    
+    while IFS= read -r linha; do
+        if [ -n "$linha" ]; then
+            ((TOTAL++))
+            if [ -d "$linha" ]; then
+                ((DIR_COUNT++))
+            else
+                ((FILE_COUNT++))
+            fi
+        fi
+    done <<< "$RESULTS"
+    
+    echo -e "${YELLOW}Resultados:${NC}"
+    echo -e "  Arquivos:   ${GREEN}$FILE_COUNT${NC}"
+    echo -e "  Diretórios: ${BLUE}$DIR_COUNT${NC}"
+    echo -e "  ${YELLOW}Total:      $TOTAL${NC}"
+elif [ -n "$SAVE_FILE" ]; then
+    # Salvar em arquivo
+    eval "$FIND_CMD" 2>/dev/null | while read -r line; do
+        [ "$line" != "$DIRETORIO" ] && echo "$line"
+    done > "$SAVE_FILE"
+    echo -e "${GREEN}Resultados salvos em: $SAVE_FILE${NC}"
+else
+    # Saída normal com cores e indicadores
+    eval "$FIND_CMD" 2>/dev/null | while read -r line; do
+        [ "$line" != "$DIRETORIO" ] && echo "$line"
+    done | processar_output
+fi
