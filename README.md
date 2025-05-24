@@ -28,7 +28,7 @@ sudo dnf install encontre
 
 ### Ubuntu / Debian
 
-Via PPA:
+Via PPA (Ainda não disponível. Opte pela [Instalação Manual](https://github.com/richarddalves/encontre/tree/main?tab=readme-ov-file#instala%C3%A7%C3%A3o-manual)):
 ```bash
 sudo add-apt-repository ppa:richarddalves/encontre
 sudo apt update
