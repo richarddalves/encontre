@@ -21,6 +21,7 @@ O Encontre é uma ferramenta de linha de comando que simplifica a busca de arqui
 ### Fedora / RHEL / CentOS
 
 Via COPR:
+
 ```bash
 sudo dnf copr enable richarddalves/encontre
 sudo dnf install encontre
@@ -29,6 +30,7 @@ sudo dnf install encontre
 ### Ubuntu / Debian
 
 Via PPA (Ainda não disponível. Opte pela [Instalação Manual](https://github.com/richarddalves/encontre/tree/main?tab=readme-ov-file#instala%C3%A7%C3%A3o-manual)):
+
 ```bash
 sudo add-apt-repository ppa:richarddalves/encontre
 sudo apt update
@@ -37,7 +39,7 @@ sudo apt install encontre
 
 ### Instalação Manual
 
-Baixe o pacote apropriado na página de [Releases](https://github.com/richarddalves/encontre/releases) ou instale diretamente o script:
+Baixe o pacote apropriado na página de [Releases](https://github.com/richarddalves/encontre/releases) ou instale diretamente o script (recomendado):
 
 ```bash
 # Download direto do script
@@ -81,6 +83,7 @@ encontre . --contar
 ### Opções de Busca
 
 #### Ignorar Arquivos/Diretórios
+
 ```bash
 encontre . --ignore PADRÃO...
 encontre . -i PADRÃO...
@@ -91,6 +94,7 @@ encontre . -i node_modules *.log       # Ignora múltiplos padrões
 ```
 
 #### Filtrar por Padrões
+
 ```bash
 encontre . --apenas PADRÃO...
 encontre . -a PADRÃO...
@@ -103,6 +107,7 @@ encontre . -a test_*.py                # Apenas testes Python
 ### Opções de Filtro
 
 #### Por Tipo
+
 ```bash
 encontre . --tipo [arquivo|diretorio]
 encontre . -t [a|d]
@@ -113,6 +118,7 @@ encontre . -t d                        # Apenas diretórios
 ```
 
 #### Por Tamanho
+
 ```bash
 encontre . --tamanho OPERADOR+TAMANHO
 encontre . -t OPERADOR+TAMANHO
@@ -127,6 +133,7 @@ encontre . --tamanho =5kb              # Exatamente 5KB
 ```
 
 #### Por Data de Modificação
+
 ```bash
 encontre . --modificado TEMPO
 encontre . -m TEMPO
@@ -141,6 +148,7 @@ encontre . -m 2h                       # Últimas 2 horas
 ### Opções de Saída
 
 #### Indicadores de Tipo
+
 ```bash
 encontre . --indicadores               # Mostra todos: /, *, @, |
 encontre . -i                          # Mesmo efeito
@@ -149,6 +157,7 @@ encontre . --is                        # Mesmo efeito
 ```
 
 #### Cores
+
 ```bash
 encontre . --no-color                  # Desabilita cores
 encontre . --nc                        # Mesmo efeito
@@ -157,6 +166,7 @@ encontre . --sc                        # Mesmo efeito
 ```
 
 #### Salvar Resultados
+
 ```bash
 encontre . --salvar arquivo.txt
 encontre . -s lista.txt
@@ -189,14 +199,65 @@ encontre --tamanho --ajuda             # Ajuda sobre tamanhos
 encontre -a --ajuda                    # Ajuda sobre --apenas
 ```
 
-## Diferenças do find
+## 🔍 Diferenças entre `find` e `encontre`
 
-| Operação | find | encontre |
-|----------|------|----------|
-| Ignorar diretório | `find . -name .git -prune -o -print` | `encontre . --ignore .git` |
-| Apenas arquivos | `find . -type f` | `encontre . --tipo arquivo` |
-| Por tamanho | `find . -size +10M` | `encontre . --tamanho +10mb` |
-| Últimos 7 dias | `find . -mtime -7` | `encontre . --modificado 7d` |
+| Operação                             | Comando `find`                                                                 | Comando `encontre`                                           |
+|--------------------------------------|--------------------------------------------------------------------------------|--------------------------------------------------------------|
+| Ignorar um diretório                 | `find . -name .git -prune -o -print`                                           | `encontre . --ignore .git`                                   |
+| Ignorar múltiplos diretórios         | `find . \( -path ./node_modules -o -path ./.git \) -prune -o -print`           | `encontre . --ignore .git node_modules`                      |
+| Ignorar arquivos por padrão          | `find . -not -name "*.log"`                                                    | `encontre . --ignore *.log`                                  |
+| Buscar apenas arquivos               | `find . -type f`                                                               | `encontre . --tipo arquivo`                                  |
+| Buscar apenas diretórios             | `find . -type d`                                                               | `encontre . --tipo diretorio`                                |
+| Buscar por extensão                  | `find src -name "*.rs"`                                                        | `encontre src --apenas *.rs`                                 |
+| Buscar por tamanho                   | `find . -size +10M`                                                            | `encontre . --tamanho +10mb`                                 |
+| Buscar arquivos recentes             | `find . -mtime -7`                                                             | `encontre . --modificado 7d`                                 |
+| Múltiplos critérios combinados       | `find . -type f -size +10M -mtime -7 -print`                                   | `encontre . --tipo arquivo --tamanho +10mb --modificado 7d`  |
+| Buscar recentes e salvar em arquivo  | `find . -mtime -7 > lista.txt`                                                 | `encontre . --modificado 7d --salvar lista.txt`              |
+| Contar resultados                    | `find . \| wc -l`                                                               | `encontre . --contar`                                        |
+| Exibir com indicadores (/, *, @, \|) | *(requer script externo ou ls combinado)*                                      | `encontre . --indicadores` ou `-i`                           |
+| Desabilitar cores na saída           | *(sem equivalente direto; depende de TERM/alias)*                              | `encontre . --sem-cor` ou `--no-color`                       |
+
+
+### Exemplos que destacam a simplicidade do `encontre`:
+
+```bash
+# Buscar arquivos .py em src ignorando node_modules
+
+# Com find:
+find src \( -path ./node_modules \) -prune -o -name "*.py" -print
+
+# Com encontre (sem abreviações):
+encontre src --ignore node_modules --apenas *.py
+
+# Com encontre (com abreviações):
+encontre src -i node_modules -a *.py
+
+####################################################
+
+# Buscar arquivos maiores que 10MB modificados na última semana
+
+# Com find:
+find . -type f -size +10M -mtime -7 -print
+
+# Com encontre (sem abreviações):
+encontre . --tipo arquivo --tamanho +10mb --modificado 7d
+
+# Com encontre (com abreviações):
+encontre . -t arquivo -t +10mb -m 7d
+
+####################################################
+
+# Buscar arquivos .rs, ignorando dist/ e lib/
+
+# Com find:
+find src \( -path ./dist -o -path ./lib \) -prune -o -name "*.rs" -print
+
+# Com encontre (sem abreviações):
+encontre src --ignore dist/ lib/ --apenas *.rs
+
+# Com encontre (com abreviações):
+encontre src -i dist/ lib/ -a *.rs
+```
 
 ## Desenvolvimento
 
@@ -248,5 +309,6 @@ Este projeto está licenciado sob a licença MIT - veja o arquivo [LICENSE](LICE
 ## Autor
 
 Richard Dias Alves
+
 - GitHub: [@richarddalves](https://github.com/richarddalves)
 - Email: dev@richardalves.com
